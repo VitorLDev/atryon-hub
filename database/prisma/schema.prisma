@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum CareType {
+  PRAYER
+  COUNSELING
+  VISIT
+  FOLLOW_UP
+}
+
+enum DocumentVisibility {
+  PRIVATE
+  ORGANIZATION
+  UNIT
+}
+
+model Organization {
+  id          String             @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String             @unique
+  status      OrganizationStatus @default(TRIAL)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  units       Unit[]
+  memberships Membership[]
+  roles       Role[]
+  members     Member[]
+  ministries  Ministry[]
+  events      Event[]
+  transactions FinancialTransaction[]
+  assets      Asset[]
+  careRecords CareRecord[]
+  courses     Course[]
+  documents   Document[]
+  auditLogs   AuditLog[]
+
+  @@index([status])
+}
+
+model Unit {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  address        String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        Member[]
+  events         Event[]
+  transactions   FinancialTransaction[]
+  assets         Asset[]
+  unitMemberships UnitMembership[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  email         String         @unique
+  name          String
+  passwordHash  String
+  phone         String?
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+  memberProfile Member?
+}
+
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  organizationId String           @db.Uuid
+  status         MembershipStatus @default(INVITED)
+  joinedAt       DateTime?
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unitMemberships UnitMembership[]
+  userRoles      UserRole[]
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, status])
+}
+
+model UnitMembership {
+  membershipId String     @db.Uuid
+  unitId       String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  unit         Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, unitId])
+}
+
+model Role {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  name           String
+  description    String?
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userRoles      UserRole[]
+  permissions   RolePermission[]
+
+  @@unique([organizationId, name])
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model UserRole {
+  membershipId String     @db.Uuid
+  roleId       String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Member {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  unitId         String?      @db.Uuid
+  userId         String?      @unique @db.Uuid
+  fullName       String
+  email          String?
+  phone          String?
+  birthDate      DateTime?
+  maritalStatus  String?
+  address        Json?
+  photoUrl       String?
+  baptismDate    DateTime?
+  status         MemberStatus @default(ACTIVE)
+  joinedAt       DateTime     @default(now())
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit           Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  teamMemberships TeamMember[]
+  registrations  EventRegistration[]
+  careRecords    CareRecord[]
+  enrollments    CourseEnrollment[]
+
+  @@index([organizationId, fullName])
+  @@index([organizationId, status])
+}
+
+model Ministry {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  description    String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teamMembers    TeamMember[]
+
+  @@unique([organizationId, name])
+}
+
+model TeamMember {
+  ministryId String   @db.Uuid
+  memberId   String   @db.Uuid
+  role       String?
+  joinedAt   DateTime @default(now())
+  ministry   Ministry @relation(fields: [ministryId], references: [id], onDelete: Cascade)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([ministryId, memberId])
+}
+
+model Event {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  unitId         String?      @db.Uuid
+  title          String
+  description    String?
+  location       String?
+  startsAt       DateTime
+  endsAt         DateTime?
+  capacity       Int?
+  status         EventStatus  @default(DRAFT)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit           Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  registrations  EventRegistration[]
+
+  @@index([organizationId, startsAt])
+}
+
+model EventRegistration {
+  eventId      String   @db.Uuid
+  memberId     String   @db.Uuid
+  registeredAt DateTime @default(now())
+  checkedInAt  DateTime?
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member       Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, memberId])
+  @@index([memberId])
+}
+
+model FinancialTransaction {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  unitId         String?         @db.Uuid
+  type           TransactionType
+  category       String
+  costCenter     String?
+  description    String
+  amount         Decimal         @db.Decimal(12, 2)
+  occurredAt     DateTime
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit           Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, type, category])
+}
+
+model Asset {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  unitId         String?      @db.Uuid
+  name           String
+  category       String
+  serialNumber   String?
+  acquiredAt     DateTime?
+  condition      String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit           Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, category])
+}
+
+model CareRecord {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  memberId       String?      @db.Uuid
+  type           CareType
+  scheduledAt    DateTime?
+  notes          String
+  responsible    String?
+  isConfidential Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member         Member?      @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, scheduledAt])
+}
+
+model Course {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  description    String?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  teacherName    String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  enrollments    CourseEnrollment[]
+}
+
+model CourseEnrollment {
+  courseId   String   @db.Uuid
+  memberId   String   @db.Uuid
+  enrolledAt DateTime @default(now())
+  attendance Int      @default(0)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, memberId])
+}
+
+model Document {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  title          String
+  category       String
+  storageKey     String
+  version        Int                @default(1)
+  visibility     DocumentVisibility @default(ORGANIZATION)
+  uploadedBy     String             @db.Uuid
+  createdAt      DateTime           @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, category])
+}
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  actorId        String?      @db.Uuid
+  action         String
+  entity         String
+  entityId       String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([actorId, createdAt])
+}
